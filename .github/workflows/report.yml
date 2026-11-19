@@ -4,7 +4,7 @@ name: Report
 
 on:
   workflow_run:
-    workflows: [Measure AOT, Measure AOT (daily .NET 12)]
+    workflows: [Measure AOT, Measure AOT (daily .NET 11)]
     types: [completed]
   workflow_dispatch:
     inputs:
