@@ -10,7 +10,7 @@ results_dir, site, run_url = sys.argv[1:4]
 rows = []
 for f in sorted(glob.glob(os.path.join(results_dir, '**', 'result-*.json'), recursive=True)):
     rows.append(json.load(open(f)))
-order = {'net9.0': 0, 'net10.0': 1, 'net11.0': 2, 'net11.0-daily': 3}
+order = {'net9.0': 0, 'net10.0': 1, 'net11.0': 2}
 rows.sort(key=lambda r: (order.get(r['framework'], 9), r['arm']))
 
 
@@ -52,8 +52,7 @@ type arguments wrapped one level deeper (the shape of ILGPU's ArgumentMapper). O
 field path. Times come from MSBuild's task performance summary of the publish binlog (MonoAOTCompiler = every
 mono-aot-cross pass, including the single-threaded aot-instances.dll dedup pass) and mono's own "Compiled" lines.
 Measured by this repo's
-GitHub Actions run(s): {" ".join(f'<a href="{html.escape(u)}">{html.escape(u.rsplit("/", 1)[-1])}</a>' for u in run_url.split())}.
-net11.0-daily = a daily .NET 11 servicing SDK (release/11.0), which has the depth limit of dotnet/runtime #135029 / #135438, backported 2026-11-16 (#135334); the 11.0.0 release does not.</p>
+GitHub Actions run(s): {" ".join(f'<a href="{html.escape(u)}">{html.escape(u.rsplit("/", 1)[-1])}</a>' for u in run_url.split())}.</p>
 <div class="wrap"><table>
 <tr><th>Framework</th><th>Arm</th><th>Publish wall time</th><th>MonoAOTCompiler task (all AOT passes)</th>
 <th>aot-instances compiled</th><th>aot-instances emit JIT (Windows mono only)</th><th>App</th></tr>

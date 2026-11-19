@@ -57,6 +57,6 @@ took most of the rest.
 dotnet/runtime #135029 / #135438 ("Fix stack overflow normalizing self-referencing struct wrappers") add a parent-frame
 chain with cycle detection and a depth limit of 16 to `get_wrapper_shared_vtype`. They target a stack overflow. The
 change is in main (.NET 12) and was backported to release/11.0 on 2026-11-16 (#135334), after the 11.0.0 release, so
-the net10.0 and net11.0 rows on the results page run without it. The `net11.0-daily` rows (workflow
-`measure-daily.yml`, a daily .NET 11 servicing SDK) show whether the depth limit also bounds this cost. (.NET 12
-dailies run browser-wasm on CoreCLR, without Mono AOT, so they cannot test it.)
+every row on the results page runs without it. Whether that depth limit also bounds this cost is **untested**:
+no public build has it yet (the daily .NET 11 SDKs, 11.0.200-preview.26567.117 on 2026-11-19, still bundle runtime
+11.0.0-rc.2.26508.107), and .NET 12 dailies run browser-wasm on CoreCLR, without Mono AOT.
