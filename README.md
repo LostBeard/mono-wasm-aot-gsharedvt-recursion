@@ -52,6 +52,24 @@ Mono's own counters for that pass: 54,728 instances in 1,049 s of JIT (19.2 ms e
 0.54 ms per method in the 105 ordinary per-assembly passes of the same app. The collect phase, which prints no timing,
 took most of the rest.
 
+## Am I affected? Workaround
+
+Signs, on a browser-wasm AOT publish with the default `WasmDedup=true`:
+
+* almost all `mono-aot-cross` passes finish in a minute or two, then `[n/n] aot-instances.dll -> aot-instances.dll.bc`
+  arrives tens of minutes or hours later, on one core;
+* a profile of that `mono-aot-cross` process sits in `add_gsharedvt_wrappers` -> `get_wrapper_shared_type_full` /
+  `get_wrapper_shared_vtype` (Microsoft's public symbol server has the PDB for the Windows `mono-aot-cross.exe`);
+* in `aot-instances.dll.bc`, instance names repeat one generic struct many times in a row (`Wrapper_1_Wrapper_1_...`).
+
+Workaround: find the generic method that calls itself with its struct type argument wrapped one level deeper, and
+make that recursion non-generic. The OFF arm here keeps the root type generic but carries the field path as a plain
+array (`PathSource<TRoot>`), so the instantiation set is fixed. That is how ILGPU fixed its `ArgumentMapper`
+(SpawnDev.ILGPU 5.4.38): a real app's 89-minute `aot-instances` pass dropped to about a minute.
+
+`-p:WasmDedup=false` is not a measured workaround for this: the cost moves out of the single dedup pass, but whether the
+per-assembly passes then pay it was not tested here, and it makes `dotnet.native.wasm` much larger.
+
 ## Related upstream work
 
 dotnet/runtime #135029 / #135438 ("Fix stack overflow normalizing self-referencing struct wrappers") add a parent-frame
