@@ -4,12 +4,12 @@ name: Report
 
 on:
   workflow_run:
-    workflows: [Measure AOT]
+    workflows: [Measure AOT, Measure AOT (daily .NET 12)]
     types: [completed]
   workflow_dispatch:
     inputs:
-      run_id:
-        description: 'Measure AOT run id'
+      run_ids:
+        description: 'Measure run ids to merge into one page, space separated'
         required: true
 
 permissions:
@@ -29,18 +29,19 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     env:
-      RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
+      RUN_IDS: ${{ github.event.workflow_run.id || inputs.run_ids }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       # The newest SDK reads binlogs written by older ones.
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '11.0.x'
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          run-id: ${{ env.RUN_ID }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download artifacts of every run
+        run: |
+          mkdir -p artifacts
+          for id in $RUN_IDS; do gh run download "$id" -R "${{ github.repository }}" -D artifacts; done
+          ls artifacts
       - name: Extract timings from every binlog
         run: |
           mkdir -p results
@@ -60,7 +61,8 @@ jobs:
             name=$(basename "$d"); name=${name#app-}
             cp -r "$d" "site/apps/$name"
           done
-          python3 tools/make_page.py results site "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ env.RUN_ID }}"
+          urls=""; for id in $RUN_IDS; do urls="$urls ${{ github.server_url }}/${{ github.repository }}/actions/runs/$id"; done
+          python3 tools/make_page.py results site "$urls"
           touch site/.nojekyll
       - uses: actions/upload-pages-artifact@v3
         with:
