@@ -1,0 +1,7 @@
+bin/
+obj/
+out/
+*.binlog
+diag.log
+result-*.json
+global.json

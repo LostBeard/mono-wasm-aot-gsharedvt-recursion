@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+  <!--
+    Browser-wasm AOT (WasmDedup default = true). Build twice and compare the aot-instances.dll pass:
+      ON  (default)                          polymorphic recursion over struct type arguments
+      OFF -p:NoPolymorphicRecursion=true     the same walk with a non-generic field path
+    Pick the framework with -p:TargetFramework=net9.0 / net10.0 / net11.0 (the matching SDK + wasm-tools workload).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <RunAOTCompilation>true</RunAOTCompilation>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <!-- The walk reads struct fields by reflection: keep this assembly's members (the trimmer cannot see the flow). -->
+  <ItemGroup>
+    <TrimmerRootAssembly Include="Repro" />
+  </ItemGroup>
+  <PropertyGroup>
+    <NoWarn>$(NoWarn);IL2075</NoWarn>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(NoPolymorphicRecursion)' == 'true'">
+    <DefineConstants>$(DefineConstants);NOREC</DefineConstants>
+  </PropertyGroup>
+</Project>

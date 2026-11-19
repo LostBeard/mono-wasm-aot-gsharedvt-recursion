@@ -1,0 +1,103 @@
+# Measures the browser-wasm AOT publish of the repro app, ON vs OFF, on .NET 9 / 10 / 11, and publishes the results
+# table plus every built app to GitHub Pages.
+name: Measure AOT
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 355
+    strategy:
+      fail-fast: false
+      matrix:
+        framework: [net9.0, net10.0, net11.0]
+        arm: [on, off]
+        include:
+          - framework: net9.0
+            sdk: '9.0.x'
+            pin: '9.0.100'
+          - framework: net10.0
+            sdk: '10.0.x'
+            pin: '10.0.100'
+          - framework: net11.0
+            sdk: '11.0.x'
+            pin: '11.0.100'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ matrix.sdk }}
+      # The runner image has newer SDKs too; pin the one this leg measures so the matching wasm-tools workload is used.
+      - name: Pin SDK
+        run: |
+          echo '{"sdk":{"version":"${{ matrix.pin }}","rollForward":"latestFeature"}}' > global.json
+          dotnet --version
+      - name: Install wasm-tools
+        run: dotnet workload install wasm-tools
+      - name: Publish (AOT)
+        run: |
+          extra=""
+          if [ "${{ matrix.arm }}" = "off" ]; then extra="-p:NoPolymorphicRecursion=true"; fi
+          start=$(date +%s)
+          dotnet publish src/Repro.csproj -c Release --nologo -p:TargetFramework=${{ matrix.framework }} $extra -o out -bl:pub.binlog
+          end=$(date +%s)
+          echo "WALL=$((end-start))" >> "$GITHUB_ENV"
+          echo "publish wall time: $((end-start)) s"
+      - name: Extract mono AOT timings
+        if: always()
+        run: |
+          dotnet msbuild pub.binlog -noconlog "-flp:logfile=diag.log;verbosity=diagnostic" || true
+          python3 tools/extract.py diag.log ${{ matrix.framework }} ${{ matrix.arm }} "${WALL:-0}" result-${{ matrix.framework }}-${{ matrix.arm }}.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: result-${{ matrix.framework }}-${{ matrix.arm }}
+          path: |
+            result-${{ matrix.framework }}-${{ matrix.arm }}.json
+            pub.binlog
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-${{ matrix.framework }}-${{ matrix.arm }}
+          path: out/wwwroot
+
+  pages:
+    needs: measure
+    if: always()
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Build site
+        run: |
+          mkdir -p site/apps
+          for d in artifacts/app-*; do
+            [ -d "$d" ] || continue
+            name=$(basename "$d"); name=${name#app-}
+            cp -r "$d" "site/apps/$name"
+            # GitHub Pages refuses files over 100 MB; these apps are a few MB.
+          done
+          python3 tools/make_page.py artifacts site "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          touch site/.nojekyll
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

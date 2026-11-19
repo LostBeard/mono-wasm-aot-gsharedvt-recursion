@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Repro app</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 16px; background: #fff; color: #111; }
+    pre { background: #f3f3f3; padding: 12px; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <h1>AOT repro app</h1>
+  <p>Runs the mapping walk once with each emitter and prints the result. Expected last line: <code>ops 3 / 3</code>, exit code 0.</p>
+  <pre id="out">running...</pre>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
