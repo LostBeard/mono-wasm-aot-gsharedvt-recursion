@@ -12,10 +12,6 @@ permissions:
   pages: write
   id-token: write
 
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
 jobs:
   measure:
     runs-on: ubuntu-24.04
@@ -52,7 +48,7 @@ jobs:
           extra=""
           if [ "${{ matrix.arm }}" = "off" ]; then extra="-p:NoPolymorphicRecursion=true"; fi
           start=$(date +%s)
-          dotnet publish src/Repro.csproj -c Release --nologo -p:TargetFramework=${{ matrix.framework }} $extra -o out -bl:pub.binlog
+          dotnet publish src/Repro.csproj -c Release --nologo -p:ReproTfm=${{ matrix.framework }} $extra -o out -bl:pub.binlog
           end=$(date +%s)
           echo "WALL=$((end-start))" >> "$GITHUB_ENV"
           echo "publish wall time: $((end-start)) s"
@@ -77,6 +73,9 @@ jobs:
     needs: measure
     if: always()
     runs-on: ubuntu-24.04
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

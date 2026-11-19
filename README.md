@@ -28,7 +28,8 @@ dotnet publish src/Repro.csproj -c Release                                   # O
 dotnet publish src/Repro.csproj -c Release -p:NoPolymorphicRecursion=true    # OFF
 ```
 
-Add `-p:TargetFramework=net9.0` / `net11.0` with the matching SDK. `tools/extract.py` reads mono's own `Compiled` and
+Add `-p:ReproTfm=net9.0` / `net11.0` with the matching SDK (a global `-p:TargetFramework` does not reach the
+WebAssembly SDK's nested publish). `tools/extract.py` reads mono's own `Compiled` and
 `JIT time` lines out of a replayed binlog (`dotnet msbuild pub.binlog -noconlog -flp:logfile=diag.log;verbosity=diagnostic`).
 
 ## Where the time goes

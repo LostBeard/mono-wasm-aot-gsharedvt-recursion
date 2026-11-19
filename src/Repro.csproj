@@ -3,10 +3,12 @@
     Browser-wasm AOT (WasmDedup default = true). Build twice and compare the aot-instances.dll pass:
       ON  (default)                          polymorphic recursion over struct type arguments
       OFF -p:NoPolymorphicRecursion=true     the same walk with a non-generic field path
-    Pick the framework with -p:TargetFramework=net9.0 / net10.0 / net11.0 (the matching SDK + wasm-tools workload).
+    Pick the framework with -p:ReproTfm=net9.0 / net10.0 / net11.0 (the matching SDK + wasm-tools workload).
+    ReproTfm, not -p:TargetFramework: the WebAssembly SDK's nested publish drops a global TargetFramework.
   -->
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <ReproTfm Condition="'$(ReproTfm)' == ''">net10.0</ReproTfm>
+    <TargetFramework>$(ReproTfm)</TargetFramework>
     <OutputType>Exe</OutputType>
     <Nullable>enable</Nullable>
     <RunAOTCompilation>true</RunAOTCompilation>
