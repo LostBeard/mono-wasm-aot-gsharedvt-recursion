@@ -25,20 +25,13 @@ def fmt(v, unit='s'):
 body = []
 for r in rows:
     app = f"apps/{r['framework']}-{r['arm']}/"
-    per = None
-    if r.get('aot_instances_emit_jit_s') is not None and r.get('aot_instances_methods'):
-        per = r['aot_instances_emit_jit_s'] * 1000 / r['aot_instances_methods']
-    other_per = None
-    if r.get('other_passes_methods'):
-        other_per = r['other_passes_jit_s'] * 1000 / r['other_passes_methods']
     body.append('<tr>' + ''.join(f'<td>{c}</td>' for c in [
         html.escape(r['framework']),
         'ON (polymorphic recursion)' if r['arm'] == 'on' else 'OFF (non-generic path)',
         fmt(float(r['publish_wall_s'])),
+        fmt(r.get('mono_aot_task_s')),
+        fmt(r.get('aot_instances_compiled'), ''),
         fmt(r.get('aot_instances_emit_jit_s')),
-        fmt(r.get('aot_instances_methods'), ''),
-        fmt(per, 'ms') if per is not None else 'n/a',
-        fmt(other_per, 'ms') if other_per is not None else 'n/a',
         f'<a href="{app}">run</a>',
     ]) + '</tr>')
 
@@ -56,16 +49,17 @@ p {{ color:var(--muted); line-height:1.5; }} a {{ color:inherit; }}
 <h1>Browser-wasm AOT: polymorphic recursion over struct type arguments</h1>
 <p>Same tiny console app, built twice per framework. ON: a generic method recurses into itself with its struct
 type arguments wrapped one level deeper (the shape of ILGPU's ArgumentMapper). OFF: the same walk with a non-generic
-field path. Columns come from mono-aot-cross's own "Compiled" and "JIT time" lines in the publish log
-(WasmDedup default, so generic instances compile in the aot-instances.dll pass). Measured by this repo's
+field path. Times come from MSBuild's task performance summary of the publish binlog (MonoAOTCompiler = every
+mono-aot-cross pass, including the single-threaded aot-instances.dll dedup pass) and mono's own "Compiled" lines.
+Measured by this repo's
 GitHub Actions run: <a href="{html.escape(run_url)}">{html.escape(run_url)}</a></p>
 <div class="wrap"><table>
-<tr><th>Framework</th><th>Arm</th><th>Publish wall time</th><th>aot-instances JIT (emit phase)</th><th>Instances</th>
-<th>ms per instance</th><th>ms per method, other passes</th><th>App</th></tr>
+<tr><th>Framework</th><th>Arm</th><th>Publish wall time</th><th>MonoAOTCompiler task (all AOT passes)</th>
+<th>aot-instances compiled</th><th>aot-instances emit JIT (Windows mono only)</th><th>App</th></tr>
 {"".join(body)}
 </table></div>
-<p>The aot-instances pass also runs a collect phase before the emit phase (it re-compiles every input assembly
-to find shareable instances); mono prints no timing for it, so it shows only in the publish wall time.
+<p>The aot-instances pass runs a collect phase before its emit phase (it re-compiles every input assembly to find
+shareable instances); mono prints no timing for that phase, but it is inside the MonoAOTCompiler task time.
 Each app prints its mapping result in the page; both arms must print <code>ops 3 / 3</code> and exit 0.</p>
 </body></html>'''
 os.makedirs(site, exist_ok=True)

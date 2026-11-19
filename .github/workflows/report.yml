@@ -1,0 +1,69 @@
+# Builds the results page from a "Measure AOT" run's artifacts (binlogs + apps) and deploys it to GitHub Pages.
+# Runs automatically when a measure run completes, or by hand for any earlier run id.
+name: Report
+
+on:
+  workflow_run:
+    workflows: [Measure AOT]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Measure AOT run id'
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      # The newest SDK reads binlogs written by older ones.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '11.0.x'
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          run-id: ${{ env.RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract timings from every binlog
+        run: |
+          mkdir -p results
+          for d in artifacts/result-*; do
+            [ -f "$d/pub.binlog" ] || continue
+            name=$(basename "$d"); name=${name#result-}
+            fw=${name%-*}; arm=${name##*-}
+            wall=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['publish_wall_s'])" "$d/result-$name.json" 2>/dev/null || echo 0)
+            dotnet msbuild "$d/pub.binlog" -noconlog "-flp:logfile=$d/diag.log;verbosity=diagnostic;performancesummary" > /dev/null || true
+            python3 tools/extract.py "$d/diag.log" "$fw" "$arm" "$wall" "results/result-$name.json"
+          done
+      - name: Build site
+        run: |
+          mkdir -p site/apps
+          for d in artifacts/app-*; do
+            [ -d "$d" ] || continue
+            name=$(basename "$d"); name=${name#app-}
+            cp -r "$d" "site/apps/$name"
+          done
+          python3 tools/make_page.py results site "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ env.RUN_ID }}"
+          touch site/.nojekyll
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

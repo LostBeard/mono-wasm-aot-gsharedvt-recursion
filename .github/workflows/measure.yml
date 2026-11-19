@@ -1,5 +1,5 @@
-# Measures the browser-wasm AOT publish of the repro app, ON vs OFF, on .NET 9 / 10 / 11, and publishes the results
-# table plus every built app to GitHub Pages.
+# Measures the browser-wasm AOT publish of the repro app, ON vs OFF, on .NET 9 / 10 / 11. The Report workflow turns
+# this run's binlogs and apps into the GitHub Pages page when it completes.
 name: Measure AOT
 
 on:
@@ -9,8 +9,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 jobs:
   measure:
@@ -55,7 +53,7 @@ jobs:
       - name: Extract mono AOT timings
         if: always()
         run: |
-          dotnet msbuild pub.binlog -noconlog "-flp:logfile=diag.log;verbosity=diagnostic" || true
+          dotnet msbuild pub.binlog -noconlog "-flp:logfile=diag.log;verbosity=diagnostic;performancesummary" || true
           python3 tools/extract.py diag.log ${{ matrix.framework }} ${{ matrix.arm }} "${WALL:-0}" result-${{ matrix.framework }}-${{ matrix.arm }}.json
       - uses: actions/upload-artifact@v4
         if: always()
@@ -69,34 +67,3 @@ jobs:
           name: app-${{ matrix.framework }}-${{ matrix.arm }}
           path: out/wwwroot
 
-  pages:
-    needs: measure
-    if: always()
-    runs-on: ubuntu-24.04
-    concurrency:
-      group: pages
-      cancel-in-progress: false
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-      - name: Build site
-        run: |
-          mkdir -p site/apps
-          for d in artifacts/app-*; do
-            [ -d "$d" ] || continue
-            name=$(basename "$d"); name=${name#app-}
-            cp -r "$d" "site/apps/$name"
-            # GitHub Pages refuses files over 100 MB; these apps are a few MB.
-          done
-          python3 tools/make_page.py artifacts site "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          touch site/.nojekyll
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: site
-      - id: deployment
-        uses: actions/deploy-pages@v4

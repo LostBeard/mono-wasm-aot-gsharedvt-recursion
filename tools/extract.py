@@ -1,43 +1,69 @@
-"""Pull mono's own AOT timing for every pass out of a diagnostic MSBuild log (replayed from the publish binlog).
+"""Pull AOT timing out of a diagnostic MSBuild log replayed from the publish binlog:
+    dotnet msbuild pub.binlog -noconlog "-flp:logfile=diag.log;verbosity=diagnostic;performancesummary"
 Usage: python extract.py <diag.log> <framework> <arm> <wallSeconds> <out.json>
-Each mono-aot-cross pass prints 'Compiled: N/M' and 'JIT time: X ms, Generation time: Y ms'; MonoAOTCompiler logs that
-output after the '[<assembly>] Exec (with response file contents expanded)' line. The bitcode compile prints
-'[i/n] <file>.bc -> <file>.o [took Xs]'."""
+
+Sources, in the log:
+- MSBuild's Task Performance Summary: total time of the MonoAOTCompiler task (every mono-aot-cross pass, including the
+  single-threaded aot-instances.dll dedup pass) and of EmccCompile (bitcode -> object).
+- MonoAOTCompiler's per-pass output after '[<assembly>] Exec (with response file contents expanded)':
+  'Adding N dedup-ed methods.' and 'Compiled: N/M', plus 'JIT time: X ms, Generation time: Y ms' where mono prints it
+  (the Windows cross compiler does; the Linux one in this log does not)."""
 import json
 import re
 import sys
 
 log, fw, arm, wall, out = sys.argv[1:6]
 lines = open(log, encoding='utf-8', errors='replace').read().splitlines()
-passes = []
+
+passes = {}
 last = None
-compiled = None
-bc_took = {}
 for line in lines:
     m = re.search(r'\[([^\]]+\.dll)\] Exec \(with response', line)
     if m:
         last = m.group(1)
+        passes.setdefault(last, {})
+        continue
+    if last is None:
+        continue
+    m = re.search(r'Adding (\d+) dedup-ed methods', line)
+    if m:
+        passes[last]['dedup_methods'] = int(m.group(1))
     m = re.search(r'Compiled: (\d+)/(\d+)', line)
-    if m:
-        compiled = (int(m.group(1)), int(m.group(2)))
+    if m and 'compiled' not in passes[last]:
+        passes[last]['compiled'] = int(m.group(1))
+        passes[last]['methods'] = int(m.group(2))
     m = re.search(r'JIT time: (\d+) ms, Generation time: (\d+) ms', line)
-    if m:
-        passes.append({'assembly': last, 'jit_ms': int(m.group(1)), 'gen_ms': int(m.group(2)),
-                       'compiled': compiled[0] if compiled else None, 'methods': compiled[1] if compiled else None})
-    m = re.search(r'\] (\S+?)\.bc -> \S+\.o \[took ([\d.]+)s\]', line)
-    if m:
-        bc_took[m.group(1)] = float(m.group(2))
+    if m and 'jit_ms' not in passes[last]:
+        passes[last]['jit_ms'] = int(m.group(1))
+        passes[last]['gen_ms'] = int(m.group(2))
 
-inst = next((p for p in passes if p['assembly'] == 'aot-instances.dll'), None)
-others = [p for p in passes if p['assembly'] != 'aot-instances.dll']
+tasks = {}
+in_summary = False
+for line in lines:
+    if 'Task Performance Summary' in line:
+        in_summary = True
+        continue
+    if in_summary:
+        m = re.match(r'\s+(\d+) ms\s+(\S+)\s+(\d+) calls', line)
+        if m:
+            tasks[m.group(2)] = tasks.get(m.group(2), 0) + int(m.group(1))
+        elif line.strip() and not line.startswith(' '):
+            in_summary = False
+
+inst = passes.get('aot-instances.dll', {})
+others = {k: v for k, v in passes.items() if k != 'aot-instances.dll'}
 res = {
-    'framework': fw, 'arm': arm, 'publish_wall_s': int(wall),
-    'aot_instances_emit_jit_s': inst['jit_ms'] / 1000 if inst else None,
-    'aot_instances_emit_gen_s': inst['gen_ms'] / 1000 if inst else None,
-    'aot_instances_methods': inst['compiled'] if inst else None,
-    'other_passes_jit_s': sum(p['jit_ms'] for p in others) / 1000,
-    'other_passes_methods': sum((p['compiled'] or 0) for p in others),
-    'aot_instances_bc_to_o_s': bc_took.get('aot-instances.dll'),
+    'framework': fw,
+    'arm': arm,
+    'publish_wall_s': int(wall),
+    'mono_aot_task_s': tasks['MonoAOTCompiler'] / 1000 if 'MonoAOTCompiler' in tasks else None,
+    'emcc_compile_task_s': tasks['EmccCompile'] / 1000 if 'EmccCompile' in tasks else None,
+    'aot_instances_dedup_methods': inst.get('dedup_methods'),
+    'aot_instances_compiled': inst.get('compiled'),
+    'aot_instances_emit_jit_s': inst['jit_ms'] / 1000 if 'jit_ms' in inst else None,
+    'other_passes_compiled': sum(v.get('compiled', 0) for v in others.values()),
+    'other_passes_jit_s': (sum(v['jit_ms'] for v in others.values() if 'jit_ms' in v) / 1000
+                           if any('jit_ms' in v for v in others.values()) else None),
     'passes': passes,
 }
 json.dump(res, open(out, 'w'), indent=2)
