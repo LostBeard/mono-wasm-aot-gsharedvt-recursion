@@ -1,5 +1,7 @@
 # Mono browser-wasm AOT: polymorphic recursion over struct type arguments makes the aot-instances pass take hours
 
+Reported upstream: [dotnet/runtime#137919](https://github.com/dotnet/runtime/issues/137919).
+
 A browser-wasm AOT publish (`RunAOTCompilation=true`, default `WasmDedup=true`) of a tiny console app spends most of
 its time in one single-threaded `mono-aot-cross` pass, `aot-instances.dll`. It happens when a generic method recurses
 into itself with its struct type arguments wrapped one level deeper:
